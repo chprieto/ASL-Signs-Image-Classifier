@@ -36,9 +36,6 @@ class ASLImageDataset(Dataset):
 
         label = self.data_frame.iloc[idx, 0]
         image = self.data_frame.iloc[idx, 1:]
-        #label = int(self.labels[idx])
-        #pixels = self.pixels[idx]
-        #image = pixels.reshape(28, 28).astype(np.uint8)
 
         image = np.array(image).reshape(28, 28).astype(np.uint8)
         image = Image.fromarray(image, mode='L')
@@ -47,6 +44,7 @@ class ASLImageDataset(Dataset):
             image = self.transform(image)
 
         return image, label
+
 
 class ToTensor(object):
     """Convert ndarrays in sample to Tensors."""
