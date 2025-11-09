@@ -44,14 +44,3 @@ class ASLImageDataset(Dataset):
             image = self.transform(image)
 
         return image, label
-
-
-class ToTensor(object):
-    """Convert ndarrays in sample to Tensors."""
-
-    def __call__(self, sample):
-        label, image = sample['label'], sample['image']
-
-        return {'label': label,
-                'image': torch.from_numpy(image).unsqueeze(dim=0)}
-
