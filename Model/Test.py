@@ -2,14 +2,21 @@ import torch
 import torchvision
 import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
-import numpy as np
 import torch.nn as nn
 from Model.Dataloader import ASLImageDataset
 from Model.Net import Network
 from torch.optim import Adam
 from torch.autograd import Variable
 
-transform = transforms.Compose([
+train_transform = transforms.Compose([
+    transforms.RandomRotation(10),
+    transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),
+    transforms.ColorJitter(brightness=0.2, contrast=0.2),
+    transforms.ToTensor(),
+    transforms.Normalize((0.5,), (0.5,))
+])
+
+test_transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize(0.5, 0.5),
 ])
@@ -18,12 +25,12 @@ batch_size = 10
 number_of_labels = 26
 
 train_set = ASLImageDataset(csv_file='../Dataset/sign_mnist_train/sign_mnist_train.csv',
-                            root_dir='Dataset/sign_mnist_train/', transform=transform)
+                            root_dir='../Dataset/sign_mnist_train/', transform=train_transform)
 train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size,
                                            shuffle=True, num_workers=0)
 
 test_set = ASLImageDataset(csv_file='../Dataset/sign_mnist_test/sign_mnist_test.csv',
-                           root_dir='Dataset/sign_mnist_test/', transform=transform)
+                           root_dir='../Dataset/sign_mnist_test/', transform=test_transform)
 test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size,
                                           shuffle=True, num_workers=0)
 
@@ -35,14 +42,14 @@ model = Network()
 loss_fn = nn.CrossEntropyLoss()
 optimizer = Adam(model.parameters(), lr=0.001, weight_decay=0.0001)
 
-
+modelPath = "./lastModel.pth"
 # Function to save the model
 def saveModel():
-    path = "./myFirstModel.pth"
+    path = modelPath
     torch.save(model.state_dict(), path)
 
 
-def testAccuracy():
+def testAccuracy(loader):
     model.eval()
     accuracy = 0.0
     total = 0.0
@@ -50,7 +57,7 @@ def testAccuracy():
     model.to(device)
 
     with torch.no_grad():
-        for data in test_loader:
+        for data in loader:
             images, labels = data
             outputs = model(images.to(device))
             _, predicted = torch.max(outputs.data, 1)
@@ -65,13 +72,16 @@ def testAccuracy():
 # Training function. We simply have to loop over our data iterator and feed the inputs to the network and optimize.
 def train(num_epochs):
     best_accuracy = 0.0
+    train_acc = []
+    test_acc = []
 
     # Get device and move model to it
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print("The model will be running on", device, "device")
     model.to(device)
 
-    for epoch in range(num_epochs):  # loop over the dataset multiple times
+    for epoch in range(num_epochs):
+        model.train()
         running_loss = 0.0
         running_acc = 0.0
 
@@ -81,7 +91,7 @@ def train(num_epochs):
             images = Variable(images.to(device))
             labels = Variable(labels.to(device))
 
-            # Get ouputs for current weights, calculate loss and adjust weights
+            # Get outputs for current weights, calculate loss and adjust weights
             optimizer.zero_grad()
             outputs = model(images)
             loss = loss_fn(outputs, labels)
@@ -94,15 +104,24 @@ def train(num_epochs):
                 print('[%d, %5d] loss: %.3f' %
                       (epoch + 1, i + 1, running_loss / 1000))
                 running_loss = 0.0
+                train_acc.append(testAccuracy(train_loader))
+                test_acc.append(testAccuracy(test_loader))
 
         # Compute and print the accuracy for each epoch
-        accuracy = testAccuracy()
+        accuracy = testAccuracy(test_loader)
         print('For epoch', epoch + 1, 'the test accuracy over the whole test set is %d %%' % (accuracy))
 
         # Save model if it has greater accuracy than previous best
         if accuracy > best_accuracy:
             saveModel()
             best_accuracy = accuracy
+
+    plt.plot(train_acc, label='Train Accuracy')
+    plt.plot(test_acc, label='Test Accuracy')
+    plt.xlabel("Half-Epoch")
+    plt.ylabel("Accuracy")
+    plt.legend()
+    plt.show()
 
 
 # Function to show images in batch
@@ -160,16 +179,16 @@ def testClasses():
 
 
 # Train model
-#train(5)
-#print('Finished Training')
+train(5)
+print('Finished Training')
 
 # Load model from file and print test statistics
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 model = Network()
-path = "myFirstModel.pth"
+path = modelPath
 model.load_state_dict(torch.load(path, map_location=device))
 model.eval()
 
-print(testAccuracy())
+print(testAccuracy(test_loader))
 testClasses()
 testBatch()
