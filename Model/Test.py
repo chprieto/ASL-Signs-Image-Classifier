@@ -2,28 +2,35 @@ import torch
 import torchvision
 import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
-import numpy as np
 import torch.nn as nn
-from Model.Dataloader import (ASLImageDataset, ToTensor)
+from Model.Dataloader import ASLImageDataset
 from Model.Net import Network
 from torch.optim import Adam
 from torch.autograd import Variable
 
-transform = transforms.Compose([
+train_transforms = transforms.Compose([
+    transforms.RandomRotation(10),  # Slight rotations
+    transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),  # Small shifts
+    transforms.ColorJitter(brightness=0.2, contrast=0.2),  # Lighting variations
     transforms.ToTensor(),
-    transforms.Normalize(0.5, 0.5),
+    transforms.Normalize((0.485,), (0.229,))
+])
+
+test_transforms = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize((0.485,), (0.229,))
 ])
 
 batch_size = 10
 number_of_labels = 26
 
 train_set = ASLImageDataset(csv_file='../Dataset/sign_mnist_train/sign_mnist_train.csv',
-                            root_dir='Dataset/sign_mnist_train/', transform=transform)
+                            root_dir='Dataset/sign_mnist_train/', transform=train_transforms)
 train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size,
                                            shuffle=True, num_workers=0)
 
 test_set = ASLImageDataset(csv_file='../Dataset/sign_mnist_test/sign_mnist_test.csv',
-                           root_dir='Dataset/sign_mnist_test/', transform=transform)
+                           root_dir='Dataset/sign_mnist_test/', transform=test_transforms)
 test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size,
                                           shuffle=True, num_workers=0)
 
@@ -38,11 +45,11 @@ optimizer = Adam(model.parameters(), lr=0.001, weight_decay=0.0001)
 
 # Function to save the model
 def saveModel():
-    path = "./myFirstModel.pth"
+    path = "./newestModel.pth"
     torch.save(model.state_dict(), path)
 
 
-def testAccuracy():
+def testAccuracy(loader):
     model.eval()
     accuracy = 0.0
     total = 0.0
@@ -51,7 +58,7 @@ def testAccuracy():
     model.eval()  # Set model to evaluation mode
 
     with torch.no_grad():
-        for data in test_loader:
+        for data in loader:
             images, labels = data
             # run the model on the test set to predict labels
             outputs = model(images.to(device))
@@ -68,6 +75,8 @@ def testAccuracy():
 # Training function. We simply have to loop over our data iterator and feed the inputs to the network and optimize.
 def train(num_epochs):
     best_accuracy = 0.0
+    test_accs = []
+    train_accs = []
 
     # Define your execution device
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -77,7 +86,6 @@ def train(num_epochs):
 
     for epoch in range(num_epochs):  # loop over the dataset multiple times
         running_loss = 0.0
-        running_acc = 0.0
 
         for i, (images, labels) in enumerate(train_loader, 0):
 
@@ -104,15 +112,20 @@ def train(num_epochs):
                       (epoch + 1, i + 1, running_loss / 1000))
                 # zero the loss
                 running_loss = 0.0
+                # Add test/train accuracy to list for later graphing
+                train_accs.append(testAccuracy(train_loader))
+                test_accs.append(testAccuracy(test_loader))
 
         # Compute and print the average accuracy fo this epoch when tested over all 10000 test images
-        accuracy = testAccuracy()
-        print('For epoch', epoch + 1, 'the test accuracy over the whole test set is %d %%' % (accuracy))
+        accuracy = testAccuracy(test_loader)
+        print('For epoch', epoch + 1, 'the test accuracy over the whole test set is %d %%' % accuracy)
 
         # we want to save the model if the accuracy is the best
         if accuracy > best_accuracy:
             saveModel()
             best_accuracy = accuracy
+
+    return train_accs, test_accs
 
 
 def imshow(img):
@@ -145,8 +158,7 @@ def testBatch():
     _, predicted = torch.max(outputs, 1)
 
     # Let's show the predicted labels on the screen to compare with the real ones
-    print('Predicted: ', ' '.join('%5s' % classes[predicted[j]]
-                                  for j in range(batch_size)))
+    print('Predicted:   ', ' '.join('%5s' % classes[predicted[j]] for j in range(batch_size)))
 
 
 def testClasses():
@@ -178,15 +190,19 @@ def testClasses():
 
 
 # Let's build our model
-#train(5)
-#print('Finished Training')
+epochs = 5
+#train_accs, test_accs = train(epochs)
+print('Finished Training')
+"""plt.plot(range(2*epochs), train_accs, label="train")
+plt.plot(range(2*epochs), test_accs, label="test")
+plt.legend()
+plt.show()"""
 
 # Let's load the model we just created and test the accuracy per label
 model = Network()
-path = "myFirstModel.pth"
+path = "99+AccModel.pth"
 model.load_state_dict(torch.load(path))
 model.eval()
-
-print(testAccuracy())
+print(testAccuracy(test_loader))
 testClasses()
 testBatch()
